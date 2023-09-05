@@ -2,14 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import {
   LanguageClientOptions,
-  RevealOutputChannelOn,
-  StateChangeEvent,
-  State
+  RevealOutputChannelOn
 } from 'vscode-languageclient';
-const fs = require('fs').promises;
-
 import { Trace } from 'vscode-languageserver-protocol';
-
 import {
   LanguageClient,
   Executable,
@@ -30,30 +25,26 @@ export function activate(context: vscode.ExtensionContext) {
   }).then(async client => {
     client.registerProposedFeatures();
     client.onNotification('textDocument/publishDiagnostics', (event) => {
-      console.log('we got a publish notification event');
-    });
+      const diags : vscode.Diagnostic[] = [];
+      const uri = vscode.Uri.file(vscode.Uri.parse(event.uri).path);
+      if (client && client.diagnostics) {
+        event.diagnostics.forEach((diag: any) => {
+          const message = diag.message;
+          const lspRange = diag.range;
+          const _start = new vscode.Position(lspRange.start.line, lspRange.start.character);
+          const _end = new vscode.Position(lspRange.end.line, lspRange.end.character);
 
-    client.start();
-    await client.setTrace(Trace.Verbose);
-
-    client.onDidChangeState(async (e: StateChangeEvent) => {
-      if (e.newState === State.Running) {
-
-        const uri = vscode.Uri.file("C:\\cygwin64\\home\\Cody\\dev\\salesforce-testing-area\\force-app\\main\\default\\classes\\ABCDEF.cls");
-        const data = await fs.readFile(uri.fsPath, 'utf-8');
-
-        const newUri = vscode.Uri.parse(uri.path);
-        const response = await client.sendNotification('textDocument/didOpen', {
-          textDocument: {
-            uri: newUri.toString(),
-            languageId: 'apex',
-            version: 10,
-            text: data
-          }
+          const _range = new vscode.Range(_start, _end);
+          const _diag = new vscode.Diagnostic(_range, message);
+          diags.push(_diag);
         });
-        console.log(response);
+
+        client?.diagnostics?.set(uri, diags);
       }
     });
+
+    await client.setTrace(Trace.Verbose);
+    client.start();
   });
 }
 
@@ -130,10 +121,6 @@ export function code2ProtocolConverter(value: vscode.Uri) {
   }
 }
 
-function protocol2CodeConverter(value: string) {
-  return vscode.Uri.parse(value);
-}
-
 export async function createLanguageServer(
   extensionContext: vscode.ExtensionContext
 ): Promise<LanguageClient> {
@@ -153,8 +140,8 @@ export function buildClientOptions(): LanguageClientOptions {
   return {
     // Register the server for Apex documents
     documentSelector: [
-      { language: 'apex', scheme: 'file'},
-      { language: 'apex-anon', scheme: 'file'}
+      { language: 'apex', scheme: 'file' },
+      { language: 'apex-anon', scheme: 'file' }
     ],
     synchronize: {
       configurationSection: 'apex',
