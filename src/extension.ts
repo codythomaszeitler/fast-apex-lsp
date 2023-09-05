@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as cp from 'child_process';
 import {
   LanguageClientOptions,
   RevealOutputChannelOn
@@ -11,6 +12,13 @@ import {
   TransportKind
 } from 'vscode-languageclient/node'
 
+interface RequirementsData {
+  java_home: string;
+  java_memory: number | null;
+}
+
+const JAVA_HOME_KEY = 'salesforcedx-vscode-apex.java.home';
+const JAVA_MEMORY_KEY = 'salesforcedx-vscode-apex.java.memory';
 const UBER_JAR_NAME = 'apex-jorje-lsp.jar';
 const JDWP_DEBUG_PORT = 2739;
 const APEX_LANGUAGE_SERVER_MAIN = 'apex.jorje.lsp.ApexLanguageServerLauncher';
@@ -54,15 +62,24 @@ async function createServer(
   extensionContext: vscode.ExtensionContext
 ): Promise<Executable> {
   try {
+    const requirements = await resolveRequirements();
     const uberJar = path.resolve(
       extensionContext.extensionPath,
       UBER_JAR_NAME
     );
     const javaExecutable = path.resolve(
-      `C:\\Program Files\\Java\\jdk-20\\bin\\java`
+      `${requirements.java_home}/bin/java`
     );
-    const enableSemanticErrors: boolean = true;
-    const enableCompletionStatistics: boolean = true;
+
+    const enableSemanticErrors: boolean = vscode.workspace
+      .getConfiguration()
+      .get<boolean>('salesforcedx-vscode-apex.enable-semantic-errors', false);
+    const enableCompletionStatistics: boolean = vscode.workspace
+      .getConfiguration()
+      .get<boolean>(
+        'salesforcedx-vscode-apex.advanced.enable-completion-statistics',
+        false
+      );
 
     const args: string[] = [
       '-cp',
@@ -157,4 +174,27 @@ export function buildClientOptions(): LanguageClientOptions {
       enableEmbeddedSoqlCompletion: false
     },
   };
+}
+
+export async function resolveRequirements(): Promise<RequirementsData> {
+  const javaHome = await checkJavaRuntime();
+  const javaMemory: number | null = vscode.workspace
+    .getConfiguration()
+    .get<number | null>(JAVA_MEMORY_KEY, null);
+  return Promise.resolve({
+    java_home: javaHome,
+    java_memory: javaMemory
+  });
+}
+
+function checkJavaRuntime(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let javaHome: string | undefined = readJavaConfig();
+    resolve(javaHome);
+  });
+}
+
+function readJavaConfig(): string {
+  const config = vscode.workspace.getConfiguration();
+  return config.get<string>(JAVA_HOME_KEY, '');
 }
